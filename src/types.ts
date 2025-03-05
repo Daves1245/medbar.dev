@@ -1,9 +1,26 @@
+export type FileContent = string;
+
+export interface FileSystemNode {
+  [key: string]: FileSystemNode | FileContent | RedirectNode;
+}
+
+export interface RedirectNode {
+  redirect_url: string;
+}
+
+export type Directory = FileSystemNode;
+export type File = FileContent;
+
 export const filesystem = {
   root: {
     home: {
       projects: {
-        "README.md": "projects",
-        "test": "test project",
+        "README.md": {
+          file_content: "projects"
+        },
+        "test": {
+          file_content: "test project",
+        }
       }
     },
 

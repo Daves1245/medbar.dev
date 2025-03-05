@@ -1,101 +1,58 @@
-import { CmdFunc, CmdResponse, Shell } from '@/types';
+import { CmdFunc, CmdResponse, Shell, FileSystemNode } from '@/types';
 import path from 'path';
 
-/**
- * Validates if a path exists in the virtual filesystem
- */
-const pathExists = (fs: Shell['fs'], fullPath: string): boolean => {
-  // Skip validation for root
-  if (fullPath === '/') return true;
+const isDirectory = (node: unknown): node is FileSystemNode => {
+  return typeof node === 'object' && node !== null && !('redirect_url' in node);
+};
 
-  // Remove trailing slash if present (except for root)
-  const cleanPath = fullPath.endsWith('/') && fullPath !== '/'
-    ? fullPath.slice(0, -1)
-    : fullPath;
+// Navigate to a path within the filesystem and return the node
+const getNodeAtPath = (fs: Shell['fs'], fullPath: string): FileSystemNode | null => {
+  if (fullPath === '/') return fs.root;
 
-  // Split the path into segments
-  const segments = cleanPath.split('/').filter(Boolean);
+  const segments = fullPath.split('/').filter(Boolean);
+  let current: FileSystemNode = fs.root;
 
-  // Start at root
-  let current: any = fs.root;
-  //
-  // Navigate through each segment
   for (const segment of segments) {
-    // If current is not an object or doesn't have the segment, path doesn't exist
-    if (typeof current !== 'object' || !(segment in current)) {
-      return false;
-    }
-    current = current[segment];
+    if (!isDirectory(current) || !(segment in current)) return null;
+
+    // TypeScript needs this type check to ensure valid access
+    const next = current[segment];
+    if (!isDirectory(next)) return null;
+
+    current = next;
   }
 
-  // Ensure the destination is a directory (object)
-  return typeof current === 'object' && !('redirect_url' in current);
+  return current;
 };
 
-/**
- * Resolves a path (absolute or relative) against the current working directory
- */
-const resolvePath = (currentPath: string, targetPath: string): string => {
-  // If path is absolute, return it directly
-  if (targetPath.startsWith('/')) {
-    return path.normalize(targetPath);
-  }
+const cd: CmdFunc = (cmd, args, shellState): CmdResponse => {
+  // Default to home
+  let targetPath = args.length === 0 ? '/home' : args[0];
 
-  // Otherwise, resolve relative to current directory
-  return path.normalize(`${currentPath}/${targetPath}`);
-};
-
-/**
- * Change directory command implementation
- */
-const cd: CmdFunc = (cmd: string, args: string[], shellState: Shell): CmdResponse => {
-  // Default to home if no args
-  const targetDir = args.length === 0 ? '/home' : args[0];
-
-  // Handle special case for "cd .." (parent directory)
-  if (targetDir === '..') {
+  if (targetPath === '..') {
     const segments = shellState.cwd.split('/').filter(Boolean);
-    // Can't go up from root
-    if (segments.length === 0) {
-      return {
-        status: 'success',
-        shellState,
-        output: ''  // Silently stay at root
-      };
-    }
-
-    // Remove last segment
     segments.pop();
-    const newPath = segments.length === 0 ? '/' : `/${segments.join('/')}`;
-
-    return {
-      status: 'success',
-      shellState: {
-        ...shellState,
-        cwd: newPath
-      },
-      output: ''
-    };
+    targetPath = segments.length === 0 ? '/' : `/${segments.join('/')}`;
+  } else {
+    // Resolve relative or absolute path
+    targetPath = targetPath.startsWith('/')
+      ? path.normalize(targetPath)
+      : path.normalize(`${shellState.cwd}/${targetPath}`);
   }
 
-  // Resolve the path (handles both absolute and relative paths)
-  const resolvedPath = resolvePath(shellState.cwd, targetDir);
+  // Verify the path exists and is a directory
+  const node = getNodeAtPath(shellState.fs, targetPath);
 
-  // Check if the path exists
-  if (!pathExists(shellState.fs, resolvedPath)) {
+  if (!node) {
     return {
       status: 'error',
-      message: `cd: ${targetDir}: No such directory`
+      message: `cd: ${args[0] || ''}: No such directory`
     };
   }
 
-  // Path exists, update current working directory
   return {
     status: 'success',
-    shellState: {
-      ...shellState,
-      cwd: resolvedPath
-    },
+    shellState: { ...shellState, cwd: targetPath },
     output: ''
   };
 };

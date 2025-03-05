@@ -1,12 +1,12 @@
+import { CmdFunc } from '@/types';
 import cd from '@/bin/cd';
 import clear from '@/bin/clear';
+import ls from '@/bin/ls';
 
-// Export all available commands
-export const commands = {
-  cd,
-  clear
+// map of cmd string -> cmd func
+export const cmdRegistry: Record<string, CmdFunc> = {
+  'ls': ls,
+  'cd': cd,
+  'clear': clear,
 };
 
-// Export individual commands for direct import
-export { default as cd } from '@/bin/cd';
-export { default as clear } from '@/bin/clear';
